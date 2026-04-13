@@ -39,7 +39,7 @@ export default function ProjectPortfolio() {
     },
     {
       name: "Mokaz Audit HQ",
-      location: "Lagos, NG",
+      location: "Abuja, NG",
       status: "Operational",
       type: "Infrastructure",
       roi: "Asset-Backed",

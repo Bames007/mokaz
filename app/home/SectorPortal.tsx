@@ -34,7 +34,7 @@ const sectors = [
     id: "contracts",
     title: "General Contracts",
     subtitle: "Procurement & Infrastructure",
-    href: "/contracts",
+    href: "/contract",
     icon: <Gavel size={32} />,
     image:
       "https://images.unsplash.com/photo-1541888946425-d81bb19480c5?q=80&w=2070&auto=format&fit=crop",

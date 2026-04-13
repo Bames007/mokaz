@@ -40,7 +40,7 @@ const boardMembers = [
     name: "Sarah Jenkins, MBA",
     role: "Director",
     expertise: "Real Estate",
-    bio: "Pioneered luxury portfolio expansion across Lagos and Dubai.",
+    bio: "Pioneered luxury portfolio expansion across Abuja and Dubai.",
     image:
       "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?q=80&w=1976&auto=format&fit=crop",
   },

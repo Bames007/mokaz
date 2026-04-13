@@ -12,7 +12,7 @@ const inter = Inter({ subsets: ["latin"], weight: ["400", "500", "600"] });
 const navLinks = [
   { name: "Tax Consultancy", href: "/tax" },
   { name: "Real Estate", href: "/realestate" },
-  { name: "General Contracts", href: "/contracts" },
+  { name: "General Contracts", href: "/contract" },
   { name: "Executive Board", href: "#board" },
 ];
 
