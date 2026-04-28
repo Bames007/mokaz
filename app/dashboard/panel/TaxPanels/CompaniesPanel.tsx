@@ -3,179 +3,485 @@
 import React, { useState, useRef, useMemo } from "react";
 import { Plus_Jakarta_Sans, Inter } from "next/font/google";
 import {
-  CheckCircle2,
-  FileText,
-  Banknote,
-  Calendar,
-  Plus,
-  User,
-  ChevronRight,
-  History,
-  ShieldCheck,
-  AlertCircle,
-  ArrowLeft,
-  CreditCard,
   Building2,
+  ArrowLeft,
+  History,
+  CheckCircle2,
   CloudUpload,
-  X,
-  FileIcon,
-  Trash2,
+  Save,
+  ChevronRight,
+  Search,
+  FileText,
+  Clock,
+  ShieldCheck,
+  FileCheck,
+  Download,
+  Send,
+  BellRing,
+  ThumbsUp,
+  ThumbsDown,
+  Lock,
   Eye,
-  SendHorizontal,
 } from "lucide-react";
 
-const plusJakarta = Plus_Jakarta_Sans({ subsets: ["latin"], weight: ["800"] });
+import { MOCK_COMPANIES, Company } from "../../companyData";
+import { PDFDownloadLink } from "@react-pdf/renderer";
+import { AuditReportPDF } from "../../AuditReport";
+
+const plusJakarta = Plus_Jakarta_Sans({
+  subsets: ["latin"],
+  weight: ["700", "800"],
+});
 const inter = Inter({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
 });
 
-const years = Array.from({ length: 2025 - 1996 + 1 }, (_, i) =>
-  (2025 - i).toString(),
-);
-
-const MOCK_COMPANIES = [
-  {
-    id: "MOK-772",
-    name: "Mokaz Multitrade LTD",
-    stage: 2,
-    createdBy: "Eddy",
-    createdAt: "12 Oct 2025",
-  },
-  {
-    id: "MOK-104",
-    name: "Apex Solutions Nig.",
-    stage: 5,
-    createdBy: "Musty",
-    createdAt: "14 Oct 2025",
-  },
-  {
-    id: "MOK-291",
-    name: "Zenth Global Resources",
-    stage: 3,
-    createdBy: "Eddy",
-    createdAt: "18 Oct 2025",
-  },
-  {
-    id: "MOK-442",
-    name: "Sahara Energy Corp",
-    stage: 1,
-    createdBy: "System Admin",
-    createdAt: "20 Oct 2025",
-  },
-  {
-    id: "MOK-881",
-    name: "Ironside Logistics",
-    stage: 4,
-    createdBy: "Eddy",
-    createdAt: "22 Oct 2025",
-  },
-];
-
 export const CompaniesPanel = () => {
-  const [selectedCompany, setSelectedCompany] = useState<any>(null);
-  const [selectedYear, setSelectedYear] = useState("2025");
-  const [vault, setVault] = useState<Record<string, File>>({});
+  const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
+  const [activeTab, setActiveTab] = useState<number>(0);
+  const [searchTerm, setSearchTerm] = useState("");
 
-  const STAGES = [
-    { id: 1, title: "Registry", icon: <ShieldCheck size={18} /> },
-    { id: 2, title: "Documentation", icon: <FileText size={18} /> },
-    { id: 3, title: "Field Audit", icon: <History size={18} /> },
-    { id: 4, title: "Assessment", icon: <AlertCircle size={18} /> },
-    { id: 5, title: "Tax Payment", icon: <CreditCard size={18} /> },
-  ];
+  const fiscalYears = useMemo(() => {
+    const years = [];
+    for (let y = 2026; y >= 2018; y--) years.push(y.toString());
+    return years;
+  }, []);
 
-  // Logic to group uploads by year for the Preview Panel
-  const stagedManifest = useMemo(() => {
-    const groups: Record<string, { title: string; file: File }[]> = {};
-    Object.entries(vault).forEach(([key, file]) => {
-      const [year, ...titleParts] = key.split("-");
-      const title = titleParts.join("-");
-      if (!groups[year]) groups[year] = [];
-      groups[year].push({ title, file });
-    });
-    return groups;
-  }, [vault]);
+  const [activeYear, setActiveYear] = useState(fiscalYears[0]);
+  const [stagedFiles, setStagedFiles] = useState<{
+    [key: string]: File | null;
+  }>({
+    "Bank Statement": null,
+    "Tax Computation": null,
+    "Audited Financials": null,
+  });
 
-  const handleFileUpload = (title: string, file: File) => {
-    setVault((prev) => ({ ...prev, [`${selectedYear}-${title}`]: file }));
+  const [alertDialog, setAlertDialog] = useState<{
+    show: boolean;
+    title: string;
+    message: string;
+    type: "success" | "error" | "info";
+  }>({
+    show: false,
+    title: "",
+    message: "",
+    type: "info",
+  });
+
+  const showAlert = (
+    title: string,
+    message: string,
+    type: "success" | "error" | "info" = "info",
+  ) => {
+    setAlertDialog({ show: true, title, message, type });
   };
 
-  const removeFile = (year: string, title: string) => {
-    setVault((prev) => {
-      const next = { ...prev };
-      delete next[`${year}-${title}`];
-      return next;
-    });
-  };
+  const filteredCompanies = useMemo(() => {
+    return (MOCK_COMPANIES || []).filter(
+      (c) =>
+        c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        c.id.toLowerCase().includes(searchTerm.toLowerCase()),
+    );
+  }, [searchTerm]);
 
-  if (!selectedCompany) {
+  // --- INTERNAL COMPONENTS ---
+
+  const AuditActionForm = ({
+    stageIndex,
+    onDecision,
+  }: {
+    stageIndex: number;
+    onDecision: (s: string, r: string, rej: string) => void;
+  }) => {
+    const [remarks, setRemarks] = useState("");
+    const [rejection, setRejection] = useState("");
+    const isPast = (selectedCompany?.currentStage || 1) > stageIndex + 1;
+
+    if (isPast)
+      return (
+        <div className="mt-8 p-6 bg-slate-50 rounded-2xl border border-slate-200 flex items-center gap-4">
+          <Lock size={18} className="text-slate-400" />
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-tight">
+            Audit Stage Finalized & Locked
+          </p>
+        </div>
+      );
+
     return (
-      <div
-        className={`${inter.className} space-y-8 animate-in fade-in duration-500`}
-      >
-        <header className="flex flex-col md:flex-row justify-between items-end gap-4">
-          <div>
-            <h2
-              className={`${plusJakarta.className} text-4xl text-slate-900 tracking-tighter uppercase leading-none`}
-            >
-              Registry Terminal
-            </h2>
-            <p className="text-slate-500 font-bold text-[10px] uppercase tracking-[0.4em] mt-4 border-l-4 border-[#961515] pl-4">
-              Authorized Access Only
-            </p>
+      <div className="mt-8 pt-8 border-t border-slate-100">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+          <div className="space-y-2">
+            <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">
+              Internal Audit Notes
+            </label>
+            <textarea
+              value={remarks}
+              onChange={(e) => setRemarks(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm text-slate-900 h-24 outline-none focus:ring-2 focus:ring-slate-950 transition-all"
+              placeholder="Confidential auditor notes..."
+            />
           </div>
-        </header>
+          <div className="space-y-2">
+            <label className="text-[10px] font-bold text-red-600 uppercase ml-1">
+              Discrepancy Report (Visible to Taxpayer)
+            </label>
+            <textarea
+              value={rejection}
+              onChange={(e) => setRejection(e.target.value)}
+              className="w-full bg-white border border-red-100 rounded-xl p-4 text-sm text-slate-900 h-24 outline-none focus:border-red-500 transition-all"
+              placeholder="Reason for rejection or query..."
+            />
+          </div>
+        </div>
+        <div className="flex flex-col sm:flex-row gap-3">
+          <button
+            onClick={() => onDecision("Approved", remarks, rejection)}
+            className="flex-1 bg-slate-950 text-white px-6 py-4 rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-emerald-700 transition-all flex items-center justify-center gap-2"
+          >
+            <ThumbsUp size={16} /> Clear Stage
+          </button>
+          <button
+            onClick={() => onDecision("Rejected", remarks, rejection)}
+            className="flex-1 bg-white border border-red-600 text-red-600 px-6 py-4 rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-red-600 hover:text-white transition-all flex items-center justify-center gap-2"
+          >
+            <ThumbsDown size={16} /> Issue Query
+          </button>
+        </div>
+      </div>
+    );
+  };
 
-        <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-2xl shadow-slate-200/30 overflow-hidden">
-          <table className="w-full text-left">
-            <thead className="bg-slate-900 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-              <tr>
-                <th className="px-8 py-6">Entity Identification</th>
-                <th className="px-8 py-6">Audit Progress</th>
-                <th className="px-8 py-6">Registrar</th>
-                <th className="px-8 py-6 text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {MOCK_COMPANIES.map((co) => (
-                <tr
-                  key={co.id}
-                  className="group hover:bg-slate-50 transition-all cursor-pointer"
-                  onClick={() => setSelectedCompany(co)}
-                >
-                  <td className="px-8 py-7">
-                    <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-900 group-hover:bg-[#961515] group-hover:text-white transition-colors">
-                        <Building2 size={18} />
-                      </div>
-                      <p
-                        className={`${plusJakarta.className} text-sm text-slate-900 uppercase`}
-                      >
-                        {co.name}
+  if (selectedCompany) {
+    const isStageTwoPassed = selectedCompany.currentStage > 2;
+
+    return (
+      <div className={`${inter.className} pb-20 px-4 max-w-6xl mx-auto`}>
+        {/* Header Navigation */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center py-8 gap-4">
+          <button
+            onClick={() => setSelectedCompany(null)}
+            className="flex items-center gap-2 text-xs font-bold text-slate-400 hover:text-slate-950 transition-all group"
+          >
+            <ArrowLeft
+              size={16}
+              className="group-hover:-translate-x-1 transition-transform"
+            />
+            Back to Taxpayer List
+          </button>
+          <div className="flex gap-2 w-full md:w-auto">
+            <button
+              onClick={() =>
+                showAlert("Notice", "Taxpayer has been notified.", "success")
+              }
+              className="flex-1 md:flex-none bg-white border border-slate-200 text-slate-700 px-5 py-3 rounded-xl text-[11px] font-bold uppercase hover:bg-slate-50 transition-all flex items-center justify-center"
+            >
+              <BellRing size={14} className="mr-2" /> Notify
+            </button>
+            <PDFDownloadLink
+              document={<AuditReportPDF company={selectedCompany} />}
+              fileName={`Audit_${selectedCompany.id}.pdf`}
+            >
+              <button className="flex-1 md:flex-none bg-red-700 text-white px-5 py-3 rounded-xl text-[11px] font-bold uppercase hover:bg-red-800 transition-all flex items-center justify-center">
+                <FileText size={14} className="mr-2" /> Export Certificate
+              </button>
+            </PDFDownloadLink>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          {/* Sidebar Tracking */}
+          <div className="lg:col-span-4 space-y-4">
+            <div className="bg-slate-900 rounded-3xl p-8 text-white shadow-xl">
+              <h3
+                className={`${plusJakarta.className} text-sm uppercase tracking-widest mb-8 text-slate-400 flex items-center gap-2`}
+              >
+                <History size={16} /> Audit Timeline
+              </h3>
+              <div className="space-y-8 relative before:absolute before:left-3 before:top-2 before:bottom-2 before:w-px before:bg-slate-800">
+                {selectedCompany.auditTrail.map((log, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setActiveTab(i)}
+                    className="w-full text-left relative pl-10 transition-all"
+                  >
+                    <div
+                      className={`absolute left-0 top-0.5 w-6 h-6 rounded-lg border-2 border-slate-900 flex items-center justify-center transition-all ${
+                        log.status === "completed"
+                          ? "bg-emerald-500"
+                          : log.status === "current"
+                            ? "bg-white text-slate-950"
+                            : "bg-slate-800 text-slate-600"
+                      } ${activeTab === i ? "ring-4 ring-emerald-500/20" : ""}`}
+                    >
+                      {log.status === "completed" ? (
+                        <CheckCircle2 size={12} />
+                      ) : (
+                        <Clock size={12} />
+                      )}
+                    </div>
+                    <p
+                      className={`text-[11px] font-bold uppercase tracking-tight ${activeTab === i ? "text-emerald-400" : "text-slate-300"}`}
+                    >
+                      {log.stage}
+                    </p>
+                    <p className="text-[10px] text-slate-500 mt-1 font-medium">
+                      {log.timestamp}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Content Area */}
+          <div className="lg:col-span-8">
+            <div className="bg-white rounded-3xl p-6 md:p-10 border border-slate-100 shadow-sm">
+              <div className="flex justify-between items-start mb-8">
+                <div>
+                  <h2
+                    className={`${plusJakarta.className} text-2xl text-slate-950 uppercase`}
+                  >
+                    {selectedCompany.auditTrail[activeTab]?.stage}
+                  </h2>
+                  <p className="text-[10px] font-bold text-red-700 uppercase tracking-widest mt-2">
+                    Compliance Review Phase 0{activeTab + 1}
+                  </p>
+                </div>
+                <ShieldCheck size={32} className="text-slate-100" />
+              </div>
+
+              {activeTab === 0 && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
+                  {[
+                    { l: "Registered Email", v: selectedCompany.email },
+                    { l: "RC / Tax ID", v: selectedCompany.id },
+                    { l: "Filing Date", v: selectedCompany.createdAt },
+                    { l: "Status", v: "COMPLIANT" },
+                  ].map((item, i) => (
+                    <div
+                      key={i}
+                      className="bg-slate-50 p-5 rounded-2xl border border-slate-100"
+                    >
+                      <p className="text-[9px] font-bold text-slate-400 uppercase mb-1">
+                        {item.l}
+                      </p>
+                      <p className="text-xs font-bold text-slate-900 uppercase">
+                        {item.v}
                       </p>
                     </div>
-                  </td>
-                  <td className="px-8 py-7">
-                    <div className="flex items-center gap-3">
-                      <div className="flex-1 h-1.5 w-24 bg-slate-100 rounded-full overflow-hidden">
+                  ))}
+                </div>
+              )}
+
+              {activeTab === 1 && (
+                <div className="animate-in fade-in slide-in-from-bottom-2">
+                  {isStageTwoPassed ? (
+                    <div className="space-y-3 mb-8">
+                      <div className="flex items-center gap-2 mb-4 text-emerald-600">
+                        <Eye size={16} />
+                        <span className="text-[10px] font-bold uppercase">
+                          Archived Returns (Read-Only)
+                        </span>
+                      </div>
+                      {[
+                        "Bank Statement",
+                        "Tax Computation",
+                        "Audited Financials",
+                      ].map((t) => (
                         <div
-                          className="h-full bg-slate-900"
-                          style={{ width: `${(co.stage / 5) * 100}%` }}
+                          key={t}
+                          className="flex justify-between items-center p-4 bg-slate-50 rounded-xl border border-slate-100"
+                        >
+                          <div className="flex items-center gap-3">
+                            <FileCheck size={16} className="text-emerald-500" />
+                            <p className="text-xs font-bold text-slate-900 uppercase">
+                              {t}
+                            </p>
+                          </div>
+                          <Download
+                            size={18}
+                            className="text-slate-300 hover:text-slate-950 cursor-pointer"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex justify-between items-end mb-6">
+                        <p className="text-[11px] font-bold text-slate-900 uppercase">
+                          Schedule of Filings
+                        </p>
+                        <select
+                          value={activeYear}
+                          onChange={(e) => setActiveYear(e.target.value)}
+                          className="bg-slate-100 border border-slate-200 text-slate-900 px-4 py-2 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-slate-950"
+                        >
+                          {fiscalYears.map((y) => (
+                            <option key={y} value={y}>
+                              {y} FY
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-8">
+                        {[
+                          "Bank Statement",
+                          "Tax Computation",
+                          "Audited Financials",
+                        ].map((type) => (
+                          <UploadCard
+                            key={type}
+                            type={type}
+                            file={stagedFiles[type]}
+                            onFileSelect={(f) =>
+                              setStagedFiles((p) => ({ ...p, [type]: f }))
+                            }
+                          />
+                        ))}
+                      </div>
+                      <div className="flex gap-3 mb-8">
+                        <button
+                          onClick={() =>
+                            showAlert(
+                              "Saved",
+                              `FY ${activeYear} data staged.`,
+                              "success",
+                            )
+                          }
+                          className="flex-1 bg-slate-100 text-slate-900 py-4 rounded-xl text-[10px] font-bold uppercase hover:bg-slate-200 transition-all flex items-center justify-center gap-2"
+                        >
+                          <Save size={16} /> Save Progress
+                        </button>
+                        <button
+                          onClick={() =>
+                            showAlert(
+                              "Success",
+                              "Documentation submitted for audit.",
+                              "success",
+                            )
+                          }
+                          className="flex-1 bg-slate-950 text-white py-4 rounded-xl text-[10px] font-bold uppercase hover:bg-red-700 transition-all flex items-center justify-center gap-2 shadow-lg"
+                        >
+                          <Send size={16} /> Submit Returns
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {activeTab >= 2 && (
+                <div className="py-20 bg-slate-50 rounded-3xl border border-dashed border-slate-200 text-center mb-8">
+                  <ShieldCheck
+                    className="mx-auto text-slate-200 mb-4"
+                    size={48}
+                  />
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                    Awaiting Verification Review
+                  </p>
+                </div>
+              )}
+
+              <AuditActionForm
+                stageIndex={activeTab}
+                onDecision={(status, rem, rej) => {
+                  if (status === "Rejected" && !rej)
+                    return showAlert(
+                      "Required",
+                      "Please provide a reason for the discrepancy.",
+                      "error",
+                    );
+                  showAlert(
+                    "Updated",
+                    "Audit record has been synchronized.",
+                    "success",
+                  );
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-12 px-4 max-w-6xl mx-auto pt-10 pb-20">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
+        <div>
+          <h2
+            className={`${plusJakarta.className} text-3xl text-slate-950 uppercase tracking-tight`}
+          >
+            Taxpayer Registry
+          </h2>
+          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mt-2">
+            Internal Compliance & Audit Management
+          </p>
+        </div>
+        <div className="relative w-full md:w-80 group">
+          <Search
+            className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-slate-950 transition-colors"
+            size={18}
+          />
+          <input
+            type="text"
+            placeholder="Search by name or TIN..."
+            className="w-full bg-white border border-slate-200 rounded-xl py-3.5 pl-12 pr-4 text-xs font-medium outline-none focus:ring-2 focus:ring-slate-950 shadow-sm transition-all"
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead className="bg-slate-950 text-white text-[10px] font-bold uppercase tracking-wider">
+              <tr>
+                <th className="px-8 py-5">Corporate Taxpayer</th>
+                <th className="px-8 py-5">Audit Status</th>
+                <th className="px-8 py-5 text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {filteredCompanies.map((co) => (
+                <tr
+                  key={co.id}
+                  onClick={() => setSelectedCompany(co)}
+                  className="group hover:bg-slate-50 cursor-pointer transition-all"
+                >
+                  <td className="px-8 py-6">
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 group-hover:bg-slate-950 group-hover:text-white transition-all">
+                        <Building2 size={20} />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-slate-950 uppercase">
+                          {co.name}
+                        </p>
+                        <p className="text-[10px] text-slate-400 font-medium uppercase tracking-tight">
+                          {co.id}
+                        </p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-8 py-6">
+                    <div className="flex items-center gap-4">
+                      <div className="w-24 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-emerald-500"
+                          style={{ width: `${(co.currentStage / 5) * 100}%` }}
                         />
                       </div>
-                      <span className="text-[10px] font-black text-slate-500 uppercase">
-                        Stage {co.stage}
+                      <span className="text-[10px] font-bold text-slate-500 uppercase">
+                        Phase 0{co.currentStage}
                       </span>
                     </div>
                   </td>
-                  <td className="px-8 py-7 text-[11px] font-bold text-slate-600 uppercase">
-                    {co.createdBy}
-                  </td>
-                  <td className="px-8 py-7 text-right">
+                  <td className="px-8 py-6 text-right">
                     <ChevronRight
-                      size={18}
-                      className="inline text-slate-300 group-hover:text-[#961515]"
+                      size={20}
+                      className="inline text-slate-200 group-hover:text-slate-950 transition-all"
                     />
                   </td>
                 </tr>
@@ -184,186 +490,43 @@ export const CompaniesPanel = () => {
           </table>
         </div>
       </div>
-    );
-  }
-
-  return (
-    <div
-      className={`${inter.className} space-y-8 animate-in slide-in-from-right-10 duration-500 pb-20`}
-    >
-      <header className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
-        <button
-          onClick={() => setSelectedCompany(null)}
-          className="group flex items-center gap-2 text-[10px] font-black uppercase text-slate-400 hover:text-[#961515] transition-all"
-        >
-          <ArrowLeft size={16} /> Exit Entity Record
-        </button>
-        <div className="flex gap-2">
-          <span className="px-4 py-2 bg-slate-100 rounded-lg text-[9px] font-black text-slate-500 uppercase tracking-widest">
-            UID: {selectedCompany.id}
-          </span>
-          <span className="px-4 py-2 bg-[#961515]/5 rounded-lg text-[9px] font-black text-[#961515] uppercase tracking-widest">
-            Lead: {selectedCompany.createdBy}
-          </span>
-        </div>
-      </header>
-
-      <h2
-        className={`${plusJakarta.className} text-5xl text-slate-900 uppercase tracking-tighter leading-none`}
-      >
-        {selectedCompany.name}
-      </h2>
-
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
-        {/* LEFT: UPLOAD INTERFACE */}
-        <div className="lg:col-span-8 space-y-8">
-          <div className="bg-white rounded-[3rem] border border-slate-200 p-8 md:p-12 shadow-sm">
-            <div className="flex justify-between items-center mb-12">
-              <h3
-                className={`${plusJakarta.className} text-2xl text-slate-900 uppercase`}
-              >
-                Upload Node
-              </h3>
-              <select
-                value={selectedYear}
-                onChange={(e) => setSelectedYear(e.target.value)}
-                className="bg-slate-900 text-white px-6 py-4 rounded-xl text-[10px] font-black uppercase tracking-widest outline-none"
-              >
-                {years.map((y) => (
-                  <option key={y} value={y}>
-                    {y} Fiscal Year
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {["Bank Statement", "Schedule of Work", "Audited Account"].map(
-                (docName) => (
-                  <DocUploadCard
-                    key={docName}
-                    title={docName}
-                    year={selectedYear}
-                    file={vault[`${selectedYear}-${docName}`]}
-                    onUpload={(file: File) => handleFileUpload(docName, file)}
-                  />
-                ),
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* RIGHT: COMPLIANCE PREVIEW MANIFEST */}
-        <div className="lg:col-span-4 space-y-6">
-          <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white sticky top-8">
-            <div className="flex items-center gap-3 mb-8">
-              <Eye className="text-[#961515]" size={20} />
-              <h4
-                className={`${plusJakarta.className} text-lg uppercase tracking-tight`}
-              >
-                Audit Preview
-              </h4>
-            </div>
-
-            <div className="space-y-6 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
-              {Object.keys(stagedManifest).length === 0 ? (
-                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest leading-relaxed italic">
-                  No documents staged for the current session. Select a year and
-                  upload PDFs to begin.
-                </p>
-              ) : (
-                Object.entries(stagedManifest)
-                  .sort((a, b) => b[0].localeCompare(a[0]))
-                  .map(([year, docs]) => (
-                    <div
-                      key={year}
-                      className="border-l-2 border-[#961515] pl-4 space-y-3"
-                    >
-                      <p className="text-[10px] font-black text-[#961515] tracking-[0.2em]">
-                        {year} FISCAL CYCLE
-                      </p>
-                      {docs.map((doc, idx) => (
-                        <div
-                          key={idx}
-                          className="flex items-center justify-between group"
-                        >
-                          <div className="flex items-center gap-3">
-                            <FileIcon size={12} className="text-slate-500" />
-                            <span className="text-[11px] font-bold text-slate-200 uppercase truncate max-w-[150px]">
-                              {doc.title}
-                            </span>
-                          </div>
-                          <button
-                            onClick={() => removeFile(year, doc.title)}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-500 hover:text-white"
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  ))
-              )}
-            </div>
-
-            <button
-              disabled={Object.keys(vault).length === 0}
-              className="w-full mt-10 bg-[#961515] hover:bg-red-700 disabled:bg-slate-800 disabled:text-slate-600 text-white py-5 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-3 shadow-xl"
-            >
-              <SendHorizontal size={16} /> Finalize Submission
-            </button>
-          </div>
-        </div>
-      </div>
     </div>
   );
 };
 
-const DocUploadCard = ({ title, year, file, onUpload }: any) => {
+const UploadCard = ({
+  type,
+  file,
+  onFileSelect,
+}: {
+  type: string;
+  file: File | null;
+  onFileSelect: (f: File) => void;
+}) => {
   const inputRef = useRef<HTMLInputElement>(null);
   return (
     <div
-      className={`p-8 rounded-[2rem] border-2 transition-all flex flex-col items-center text-center ${
-        file
-          ? "border-[#961515] bg-red-50/5"
-          : "border-slate-100 bg-white hover:border-slate-200"
-      }`}
+      onClick={() => inputRef.current?.click()}
+      className={`p-6 rounded-2xl border border-dashed transition-all cursor-pointer flex flex-col items-center text-center group ${file ? "border-emerald-500 bg-emerald-50/30" : "border-slate-200 bg-slate-50 hover:border-slate-400"}`}
     >
       <input
         type="file"
         ref={inputRef}
         className="hidden"
         accept=".pdf"
-        onChange={(e) => e.target.files?.[0] && onUpload(e.target.files[0])}
+        onChange={(e) => e.target.files?.[0] && onFileSelect(e.target.files[0])}
       />
-
       <div
-        className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-6 ${file ? "bg-[#961515] text-white" : "bg-slate-50 text-slate-300"}`}
+        className={`w-10 h-10 rounded-xl flex items-center justify-center mb-3 transition-all ${file ? "bg-emerald-500 text-white shadow-lg" : "bg-white text-slate-300 group-hover:text-slate-950 shadow-sm"}`}
       >
-        {file ? <CheckCircle2 size={24} /> : <CloudUpload size={24} />}
+        {file ? <CheckCircle2 size={18} /> : <CloudUpload size={18} />}
       </div>
-
-      <p
-        className={`${plusJakarta.className} text-[11px] uppercase text-slate-900 tracking-wider`}
-      >
-        {title}
+      <p className="text-[10px] font-bold uppercase text-slate-950 mb-1 leading-tight">
+        {type}
       </p>
-      <p className="text-[9px] font-black text-slate-400 mt-1 uppercase">
-        Staging Year: {year}
+      <p className="text-[9px] font-medium text-slate-400 uppercase truncate w-full px-2">
+        {file ? file.name : "Attach PDF"}
       </p>
-
-      {file ? (
-        <div className="mt-6 text-[10px] font-bold text-[#961515] bg-white border border-[#961515]/20 px-4 py-2 rounded-lg truncate w-full">
-          {file.name}
-        </div>
-      ) : (
-        <button
-          onClick={() => inputRef.current?.click()}
-          className="mt-6 bg-slate-900 text-white px-6 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-[#961515] transition-all"
-        >
-          Attach PDF
-        </button>
-      )}
     </div>
   );
 };
